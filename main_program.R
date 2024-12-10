@@ -19,9 +19,9 @@ library(gridExtra)
 library(LSMonteCarlo)
 
 ####################################### GBM ####################################
-# set.seed(21)
+set.seed(1234567890)
 S0 <- 100 # Underlying asset price
-r <- 0.05 # risk-free rate
+r <- 0.06 # risk-free rate
 nsteps <- 12 # Time steps
 npaths <- 2000 # Number of paths
 T <- 1 # Maturity (years)
@@ -55,7 +55,6 @@ exercise_points <- seq(1, nsteps, by = 1)
 for (t in (nsteps + 1):1) {
   # Skip steps that are not exercise points for Bermudan options
   if (!(t %in% exercise_points)) {
-    
     cashflow[, t] <- payoff[, t] * discount^(t-1)
     next
   }
@@ -64,24 +63,26 @@ for (t in (nsteps + 1):1) {
     cashflow[, t] <- payoff[, t]
     next
   }
-  # Only consider in-the-money paths
+  # Only consider in-the-money paths (Continuation_value is defined previous to definition to ensure indices align with cashflow-matrix)
   in_the_money <- which(payoff[, t] > 0)
+  continuation_value <- numeric(npaths)
   if (length(in_the_money) > 0) {
     
   # Fit regression to estimate continuation value
   X <- S[in_the_money, t]
   Y <- payoff[in_the_money, t + 1] * discount^(t)
-  continuation_value <- predict(lm(Y ~ I(X) + I(X^2)),
+  continuation_value[in_the_money] <- predict(lm(Y ~ I(X) + I(X^2)),
                                 newdata = data.frame(X = S[in_the_money, t]))
-  
   # Exercise or continue decision
-  exercise <- payoff[in_the_money, t] > continuation_value
+  exercise <- payoff[, t] >= continuation_value
   cashflow[exercise, t] <- payoff[exercise, t]
   cashflow[exercise, (t + 1):(nsteps + 1)] <- 0
   cashflow[!exercise, t] <- 0
-  
-  # print(t)
-}}
+  }
+print(t)
+}
+
+cashflow[is.na(cashflow)] = 0
 
 # Calculating option price by discounting all cashflows back to time 0
 discounted_cashflows <- numeric(npaths)
@@ -98,8 +99,6 @@ for (i in 1:npaths) {
 # Option price is the average of the first column of cashflows
 cat("Bermudan Call Option Price:", mean(discounted_cashflows))
 ################################################################################
-
-
 
 
 # Plot 1
@@ -137,22 +136,145 @@ plot(1:npaths, (exercise_decision - 1), pch = 16, col = "purple",
      main = "Exercise Decisions Across Paths")
 
 
-# # Plot 5
-# price_convergence <- numeric()
-# for (i in seq(1000, npaths, by = 1000)) {
-#   partial_cashflow <- cashflow[1:i, ]
-#   price_convergence <- c(price_convergence, mean(partial_cashflow[, 1]) * discount^(-1))
-# }
-# plot(seq(1000, npaths, by = 1000), price_convergence, type = "l", col = "green",
-#      xlab = "Number of Paths", ylab = "Option Price",
-#      main = "Option Price Convergence")
-# abline(h = mean(discounted_cashflows), col = "red", lty = 2)
-# legend("topright", legend = c("Converging Price", "Final Estimate"),
-#        col = c("green", "red"), lty = c(1, 2))
-################################################################################
+# Plot 5
+source("price_convergence_func.R")
+convergence_step <- seq(from = 10000, to = 1000000, by = 10000) # c(100, 1000, 2000, 5000, 10000, 20000, 50000, 100000)
+price_convergence <- price_conv_function(S0, r, nsteps, T, dt,
+                                         K, sigma, discount, convergence_step)
+
+ggplot(as.data.frame(cbind(convergence_step, price_convergence[[1]])),
+       aes(x = convergence_step, y = price_convergence[[1]])) +
+  geom_line(color = "blue") +
+  labs(
+    x = "Number of Paths",
+    y = "Option Price",
+    title = "Option Price Based on Number of Paths"
+  ) 
+ggplot(as.data.frame(cbind(convergence_step, price_convergence[[2]])),
+       aes(x = convergence_step, y = price_convergence[[2]])) +
+  geom_line(color = "blue") +
+  labs(
+    x = "Number of Paths",
+    y = "Average Exercise Time",
+    title = "Average Exercise Time Based on Number of Paths"
+  )
+
+# Plot 6
+source("strike_price.R")
+K_price <- seq(from = 0, to = 150, by = 5) 
+K_conv <- strike_price_function(S0, r, nsteps, 500000, T,
+                                dt, sigma, discount, K_price)
+
+ggplot(as.data.frame(cbind(K_price, K_conv[[1]])),
+       aes(x = K_price, y = K_conv[[1]])) +
+  geom_point(color = "blue") +
+  labs(
+    x = "Strike Price",
+    y = "Option Price",
+    title = "Option Price Based on Strike Price"
+  ) 
+
+ggplot(as.data.frame(cbind(K_price, K_conv[[2]])),
+       aes(x = K_price, y = K_conv[[2]])) +
+  geom_point(color = "blue") +
+  labs(
+    x = "Strike Price",
+    y = "Average Exercise Time",
+    title = "Average Exercise Time Based on Strike Price"
+  ) 
+# K_conv[[3]]/500000 * 100
+
+# Plot 7
+source("sigma_func.R")
+sigma_steps <- seq(from = 0, to = 1, by = 0.05)
+sigma_conv <- sigma_function(S0, r, nsteps, 500000, T,
+                             dt, K, discount, sigma_steps)
+
+ggplot(as.data.frame(cbind(sigma_steps, sigma_conv[[1]])),
+       aes(x = sigma_steps, y = sigma_conv[[1]])) +
+  geom_point(color = "blue") +
+  labs(
+    x = "Sigma",
+    y = "Option Price",
+    title = "Option Price Based on Sigma"
+  ) 
+
+ggplot(as.data.frame(cbind(sigma_steps, sigma_conv[[2]])),
+       aes(x = sigma_steps, y = sigma_conv[[2]])) +
+  geom_point(color = "blue") +
+  labs(
+    x = "Sigma",
+    y = "Average Exercise Time",
+    title = "Average Exercise Time Based on Sigma"
+)
+
+# Plot 8
+source("riskfree_func.R")
+r_steps <- seq(from = 0, to = 0.3, by = 0.02)
+riskfree_conv <- riskfree_function(S0, nsteps, 500000, T, dt,
+                                   K, sigma, discount, r_steps)
+
+ggplot(as.data.frame(cbind(r_steps, riskfree_conv[[1]])),
+       aes(x = r_steps, y = riskfree_conv[[1]])) +
+  geom_point(color = "blue") +
+  labs(
+    x = "Riskfree-Rate",
+    y = "Option Price",
+    title = "Option Price Based on Riskfree-Rate"
+  ) 
+
+ggplot(as.data.frame(cbind(r_steps, riskfree_conv[[2]])),
+       aes(x = r_steps, y = riskfree_conv[[2]])) +
+  geom_point(color = "blue") +
+  labs(
+    x = "Riskfree-Rate",
+    y = "Average Exercise Time",
+    title = "Average Exercise Time Based on Riskfree-Rate"
+  )
 
 
 
+########################### Binomial Model ###############################
+# Calculate up and down factors
+u <- exp(sigma * sqrt(dt))        # Up factor
+d <- 1 / u                        # Down factor
+p <- (exp(r * dt) - d) / (u - d)  # Risk-neutral probability
+
+# Initialize matrices
+S_tree <- matrix(0, nrow = nsteps + 1, ncol = nsteps + 1)  # Stock price tree
+V_tree <- matrix(0, nrow = nsteps + 1, ncol = nsteps + 1)  # Option value tree
+stop_tree <- matrix(FALSE, nrow = nsteps + 1, ncol = nsteps + 1)  # Stopping decision tree
+
+# Build the stock price tree
+for (i in 0:nsteps) {
+  for (j in 0:i) {
+    S_tree[j + 1, i + 1] <- S0 * (u^j) * (d^(i - j))
+  }
+}
+
+# payoff tree (intrinsic value of exercising at each node)
+payoff_tree <- pmax(S_tree - K, 0)
+
+# Backward induction
+for (i in (nsteps):1) {
+  for (j in 1:i) {
+    # Continuation value not discounted more than once, since it is just from the 1 time step discount to now
+    continuation_value <- exp(-r * dt) * (p * payoff_tree[j + 1, i + 1] + (1 - p) * payoff_tree[j, i + 1])
+    immediate_value <- payoff_tree[j, i]
+    stop_tree[j, i] <- immediate_value >= continuation_value  # Record stopping decision
+    # cat("i:", i," j:", j, "\n")
+  }
+}
+
+
+# Result: Option value at the root
+value_binomial <- payoff_tree[1, 1] # Forkert
+cat("Fair value of the option (binomial model):", round(value_binomial, 4), "\n")
+
+stop_df <- reshape2::melt(stop_tree, varnames = c("Step", "Node"), value.name = "Stop")
+ggplot(stop_df, aes(x = Node, y = Step, fill = Stop)) +
+  geom_tile() +
+  labs(title = "Stopping Decisions in Binomial Tree")
 
 
 
