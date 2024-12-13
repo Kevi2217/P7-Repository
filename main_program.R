@@ -102,14 +102,27 @@ cat("Bermudan Call Option Price:", mean(discounted_cashflows))
 
 
 # Plot 1
-gbm_plot_lines <- 50
-plot(1:(nsteps + 1), S[1, ], type = "l", col = "blue",
-     xlab = "Time Step", ylab = "Asset Price",
-     main = "Simulated Asset Price Paths", ylim = range(S))
-for (i in 2:gbm_plot_lines) {
-  lines(1:(nsteps + 1), S[i, ], col = rainbow(gbm_plot_lines)[i])
-}
+# Extract 20 paths for plotting
+plot_paths <- 20
+S_plot <- S[1:plot_paths, ]
 
+# Convert data to long format for ggplot2
+time_steps <- 0:nsteps
+stock_prices <- data.frame(time = rep(time_steps, each = plot_paths),
+                           path = rep(1:plot_paths, times = length(time_steps)),
+                           price = as.vector(S_plot))
+
+# Plot stock prices
+p <- ggplot(stock_prices, aes(x = time, y = price, group = path, color = factor(path))) +
+  geom_line() +
+  scale_x_continuous(breaks = time_steps) +
+  labs(title = "Simulated Stock Price Paths",
+       x = "Time",
+       y = "Stock Price",
+       color = "Path") +
+  theme(legend.position="none")
+
+print(p)
 
 # Plot 2 (Same plot as plotting stock price, )
 plot(1:(nsteps + 1), colMeans(payoff), type = "l", col = "red",
