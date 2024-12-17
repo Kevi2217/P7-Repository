@@ -75,7 +75,7 @@ for (t in (nsteps + 1):1) {
                                                                       L2 = exp(-X/2)*(1-2*X+X^2/2)),
                                                                       L3 = exp(-X/2)*(1-3*X+(3*X^2/2)-(X^3/6)))
     # Exercise or continue decision
-    exercise <- payoff[, t] > continuation_value
+    exercise <- payoff[, t] >= continuation_value
     cashflow[exercise, t] <- payoff[exercise, t]
     cashflow[exercise, (t + 1):(nsteps + 1)] <- 0
     cashflow[!exercise, t] <- 0
