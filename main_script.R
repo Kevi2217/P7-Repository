@@ -275,8 +275,6 @@ ggplot(as.data.frame(cbind(r_steps, r_conv[[2]])),
     title = "Average Exercise Time Based on Risk-Free Rate"
   )
 
-
-
 ########################### Binomial Model ###############################
 # Calculate up and down factors
 u <- exp(sigma * sqrt(dt))        # Up factor
